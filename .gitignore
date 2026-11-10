@@ -1,0 +1,24 @@
+# Build outputs
+bin/
+obj/
+
+# IDE / VS Code settings
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# OS temporary files
+.DS_Store
+Thumbs.db
+
+# Database & seed files
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Publisher & package outputs
+*.nupkg
+publish/
