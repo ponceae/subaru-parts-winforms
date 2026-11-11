@@ -4,60 +4,63 @@ Imports System.IO
 Imports System.Collections.Generic
 
 Public Module DatabaseInitializer
-    Public ConnectionString As String = "Data Source=subaru_parts.db"
+    Public connStr As String = 
+        "Data Source=subaru_parts.db;Foreign Keys=True;"
 
+    ''' <summary>
+    ''' Create the `Parts` and `Categories` database tables if the connection data
+    ''' source does not exist, overwriting if otherwise.
+    ''' 
+    ''' Delegates the database seeding to helper functions.
+    ''' </summary>
     Public Sub InitAndPopulateData(
-        csvFilePath As String, 
-        Optional forceRecreate As Boolean = False
+        fp As String, Optional forceRecreate As Boolean = False
     )
         If forceRecreate AndAlso File.Exists("subaru_parts.db") Then
             File.Delete("subaru_parts.db")
         End If
 
-        Using conn As New SqliteConnection(ConnectionString)
+        Using conn As New SqliteConnection(connStr)
             conn.Open()
 
-            Dim createTablesSql As String = "
-                CREATE TABLE IF NOT EXISTS Categories (
-                    CategoryID INTEGER PRIMARY KEY,
-                    CategoryName TEXT NOT NULL
-                );
-
-                CREATE TABLE IF NOT EXISTS Parts (
-                    ID INTEGER PRIMARY KEY AUTOINCREMENT,
-                    PartNumber TEXT NOT NULL,
-                    Description TEXT NOT NULL,
-                    DealerCost REAL NOT NULL,
-                    MSRP REAL NOT NULL,
-                    CategoryID INTEGER NOT NULL,
-                    EffectiveDate TEXT NOT NULL,
-                    Revision INTEGER DEFAULT 1,
-                    IsActive INTEGER DEFAULT 1,
-                    SupersededBy TEXT DEFAULT NULL
-                );"
-
-            Using cmd As New SqliteCommand(createTablesSql, conn)
+            Using cmd As New SqliteCommand(
+                SqlStatements.CreateCategoriesAndPartsTable, conn
+            )
                 cmd.ExecuteNonQuery()
             End Using
 
             SeedCategories(conn)
 
-            If File.Exists(csvFilePath) Then
-                SeedPartsFromCSV(conn, csvFilePath)
+            If File.Exists(fp) Then
+                SeedPartsFromCSV(conn, fp)
             Else
-                Console.WriteLine(
-                    $"Warning: CSV file '{csvFilePath}' was not found for seeding."
-                )
+                Console.WriteLine($"ERROR: File '{fp}' not found for seeding.")
             End If
         End Using
     End Sub
 
-    Private Sub SeedCategories(conn As SqliteConnection)
-        Dim checkSql As String = "SELECT COUNT(*) FROM Categories"
-        Using checkCmd As New SqliteCommand(checkSql, conn)
-            Dim count As Integer = Convert.ToInt32(checkCmd.ExecuteScalar())
-            If count > 0 Then Return 
+    ''' <summary>
+    ''' Check if a table already contains rows.
+    ''' </summary>
+    Private Function HasData(sql As String, conn As SqliteConnection) As Boolean
+        Using cmd As New SqliteCommand(sql, conn)
+            Dim count As Integer = Convert.ToInt32(cmd.ExecuteScalar())
+            Return count > 0
         End Using
+    End Function
+
+    ''' <summary>
+    ''' Check if a CSV column exists and contains text.
+    ''' </summary>
+    Private Function HasValue(cols As String(), index As Integer) As Boolean
+        Return cols.Length > index AndAlso Not String.IsNullOrWhiteSpace(cols(index))
+    End Function
+
+    ''' <summary>
+    ''' Populate the `Category` table with data from the given database.
+    ''' </summary>
+    Private Sub SeedCategories(conn As SqliteConnection)
+        If HasData(SqlStatements.CheckCategoriesExist, conn) Then Return
 
         Dim categories As New Dictionary(Of Integer, String) From {
             {0, "Engine"},
@@ -75,10 +78,9 @@ Public Module DatabaseInitializer
         }
 
         Using transaction = conn.BeginTransaction()
-            Dim insertSql As String = 
-            "INSERT INTO Categories (CategoryID, CategoryName) " &
-            "VALUES (@catId, @catName)"
-            Using cmd As New SqliteCommand(insertSql, conn, transaction)
+            Using cmd As New SqliteCommand(
+                SqlStatements.InsertCategory, conn, transaction
+            )
                 cmd.Parameters.Add("@catId", SqliteType.Integer)
                 cmd.Parameters.Add("@catName", SqliteType.Text)
 
@@ -91,32 +93,28 @@ Public Module DatabaseInitializer
             transaction.Commit()
         End Using
 
-        Console.WriteLine("Successfully seeded 12 categories into database.")
+        Console.WriteLine(
+            $"Successfully seeded {categories.Count} categories into database."
+        )
     End Sub
 
+    ''' <summary>
+    ''' Populate the `Parts` table with data from the given database. 
+    '''
+    ''' Fails gracefully if duplicate part numbers entries are discovered.
+    ''' </summary>
     Private Sub SeedPartsFromCSV(conn As SqliteConnection, csvFilePath As String)
-        Dim checkSql As String = "SELECT COUNT(*) FROM parts"
-        Using checkCmd As New SqliteCommand(checkSql, conn)
-            Dim count As Integer = Convert.ToInt32(checkCmd.ExecuteScalar())
-            If count > 0 Then Return
-        End Using
+        If HasData(SqlStatements.CheckPartsExist, conn) Then Return
 
         Dim lines As String() = File.ReadAllLines(csvFilePath)
         Dim insertedCount As Integer = 0
         Dim effDateStr As String = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+        
+        Dim seenPartNums As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+        dim duplicatePartNums As New List(Of String)()
 
         Using transaction = conn.BeginTransaction()
-            Dim insertSql As String = "
-                INSERT INTO Parts (
-                    PartNumber, Description, DealerCost, MSRP, CategoryID, 
-                    EffectiveDate, Revision, IsActive, SupersededBy
-                )
-                VALUES (
-                    @partNum, @desc, @cost, @msrp, @catId, 
-                    @effDate, @rev, @active, @superBy
-                )"
-
-            Using cmd As New SqliteCommand(insertSql, conn, transaction)
+            Using cmd As New SqliteCommand(SqlStatements.InsertPart, conn, transaction)
                 cmd.Parameters.Add("@partNum", SqliteType.Text)
                 cmd.Parameters.Add("@desc", SqliteType.Text)
                 cmd.Parameters.Add("@cost", SqliteType.Real)
@@ -133,43 +131,51 @@ Public Module DatabaseInitializer
                         Dim cols As String() = line.Split(","c)
 
                         If cols.Length >= 5 Then
+                            Dim partNum As String = cols(0).Trim()
+                            Dim dealerCost As double = 0.0
+                            Dim msrpCost As Double = 0.0
+                            Dim catId As Integer = 0
                             Dim isActiveVal As Integer = 1
                             Dim revisionVal As Integer = 1
                             Dim superByVal As Object = DBNull.Value
 
-                            ''' IsActive column
-                            If cols.Length >= 6 AndAlso _
-                                Not String.IsNullOrWhiteSpace(cols(5)) Then
+                            Double.TryParse(cols(2).Trim(), dealerCost)
+                            Double.TryParse(cols(3).Trim(), msrpCost)
+                            Integer.TryParse(cols(4).Trim(), catId)
 
+                            ''' IsActive column
+                            If HasValue(cols, 5) Then 
                                 Integer.TryParse(cols(5).Trim(), isActiveVal)
                             End If
 
                             ''' Revision column
-                            If cols.Length >= 7 AndAlso _
-                                Not String.IsNullOrWhiteSpace(cols(6)) Then
-
+                            If HasValue(cols, 6) Then
                                 Integer.TryParse(cols(6).Trim(), revisionVal)
                             End If
 
                             ''' SupersededBy column
-                            If cols.Length >= 8 AndAlso _
-                                Not String.IsNullOrWhiteSpace(cols(7)) Then 
-
+                            If HasValue(cols, 7) Then
                                 superByVal = cols(7).Trim()
                             End If
 
-                            cmd.Parameters("@partNum").Value = cols(0).Trim()
-                            cmd.Parameters("@desc").Value = cols(1).Trim()
-                            cmd.Parameters("@cost").Value = CDbl(cols(2).Trim())
-                            cmd.Parameters("@msrp").Value = CDbl(cols(3).Trim())
-                            cmd.Parameters("@catId").Value = CInt(cols(4).Trim())
-                            cmd.Parameters("@effDate").Value = effDateStr
-                            cmd.Parameters("@active").Value = isActiveVal
-                            cmd.Parameters("@rev").Value = revisionVal
-                            cmd.Parameters("@superBy").Value = superByVal
+                            If seenPartNums.Contains(partNum) Then
+                                duplicatePartNums.Add(partNum)
+                            Else
+                                seenPartNums.Add(partNum)
 
-                            cmd.ExecuteNonQuery()
-                            insertedCount += 1
+                                cmd.Parameters("@partNum").Value = partNum
+                                cmd.Parameters("@desc").Value = cols(1).Trim()
+                                cmd.Parameters("@cost").Value = dealerCost
+                                cmd.Parameters("@msrp").Value = msrpCost
+                                cmd.Parameters("@catId").Value = catId
+                                cmd.Parameters("@effDate").Value = effDateStr
+                                cmd.Parameters("@active").Value = isActiveVal
+                                cmd.Parameters("@rev").Value = revisionVal
+                                cmd.Parameters("@superBy").Value = superByVal
+
+                                cmd.ExecuteNonQuery()
+                                insertedCount += 1
+                            End If
                         End If
                     End If
                 Next
@@ -177,6 +183,12 @@ Public Module DatabaseInitializer
             transaction.Commit()
         End Using
 
+        If duplicatePartNums.Count > 0 Then
+            Console.WriteLine($"{duplicatePartNums.Count} Duplicate parts found")
+            For Each duplicate In duplicatePartNums 
+                Console.WriteLine($" - {duplicate}")
+            Next
+        End If
         Console.WriteLine(
             $"Successfully seeded {insertedCount} parts into SQLite database"
         )
