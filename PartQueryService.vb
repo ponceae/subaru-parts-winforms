@@ -10,7 +10,7 @@ Public Module PartQueryService
     ''' Open and return the connection to the database file.
     ''' </summary>
     Private Function GetOpenConnection() As SqliteConnection
-        Dim conn as New SqliteConnection(DatabaseInitializer.ConnectionString)
+        Dim conn as New SqliteConnection(DatabaseInitializer.CONN_STR)
         conn.Open()
         Return conn
     End Function

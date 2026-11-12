@@ -4,7 +4,7 @@ Imports System.IO
 Imports System.Collections.Generic
 
 Public Module DatabaseInitializer
-    Public connStr As String = 
+    Public Const CONN_STR As String = 
         "Data Source=subaru_parts.db;Foreign Keys=True;"
 
     ''' <summary>
@@ -20,7 +20,7 @@ Public Module DatabaseInitializer
             File.Delete("subaru_parts.db")
         End If
 
-        Using conn As New SqliteConnection(connStr)
+        Using conn As New SqliteConnection(CONN_STR)
             conn.Open()
 
             Using cmd As New SqliteCommand(
