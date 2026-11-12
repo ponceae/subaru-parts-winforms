@@ -16,16 +16,27 @@ Public Class PartRecord
         desc As String, 
         cost As Double, 
         msrpVal As Double, 
+        catId As Integer
+    )
+        Me.New(partNum, desc, cost, msrpVal, catId, 1, True, Nothing)
+    End Sub
+
+    Public Sub New(
+        partNum As String, 
+        desc As String, 
+        cost As Double, 
+        msrpVal As Double, 
         catId As Integer,
-        Optional rev As Integer = 1,
-        Optional active As Boolean = True,
-        Optional super As String = Nothing
+        rev As Integer,
+        active As Boolean,
+        super As String
     )
         Me.PartNumber = partNum 
         Me.Description = desc
         Me.DealerCost = cost 
         Me.MSRP = msrpVal
         Me.CategoryID = catId
+
         Me.EffectiveDate = DateTime.Now
 
         Me.Revision = rev
@@ -41,9 +52,11 @@ Public Class PartRecord
 
     Public Overrides Function ToString() As String 
         Dim status As String = If(IsActive, "ACTIVE", "HISTORICAL")
-        Dim superInfo As String = If(String.IsNullOrEmpty(SupersededBy),
-                                    "",
-                                    $" ➔ Replaced by: {SupersededBy}")
+        Dim superInfo As String = If(
+            String.IsNullOrWhiteSpace(SupersededBy),
+            "",
+            $" ➔ Replaced by: {SupersededBy}"
+        )
 
         Return $"{PartNumber,-15} | {Description,-55} | Rev {Revision,2} | " &
                $"{status,-10} | Cost: ${DealerCost,7:F2} | MSRP: ${MSRP,7:F2} | " &
