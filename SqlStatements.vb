@@ -104,9 +104,9 @@ Public Module SqlStatements
             Revision,
             IsActive,
             SupersededBy,
-            (MSRP - DealerCost) AS profitMargin
+            ROUND(MSRP - DealerCost, 2) AS profitMargin
         FROM Parts
-        WHERE (MSRP - DealerCost) >= @minProfit
+        WHERE ROUND(MSRP - DealerCost, 2) >= @minProfit
         ORDER BY ProfitMargin DESC;"
 
     Public Const GetPartsByCategory As String = "

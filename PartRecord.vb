@@ -46,7 +46,7 @@ Public Class PartRecord
 
     Public ReadOnly Property ProjectedProfitMargin As Double
         Get
-            Return MSRP - DealerCost
+            Return Math.Round(MSRP - DealerCost, 2)
         End Get
     End Property
 
