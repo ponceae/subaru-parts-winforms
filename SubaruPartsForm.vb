@@ -13,6 +13,10 @@ Public Class SubaruPartsForm
     private charcoalTile As Color = ColorTranslator.FromHtml("#222A35")
     private subaruGold As Color = ColorTranslator.FromHtml("#F5C518")
 
+    ''' <summary>
+    ''' Initialize the main app window, mount the root viewport, and render the
+    ''' initial home tile menu.
+    ''' </summary>
     Public Sub New()
         Text = "Subaru Parts Tool"
         Size = New Size(1050, 620)
@@ -21,6 +25,10 @@ Public Class SubaruPartsForm
         ShowHomeMenu()
     End Sub
 
+    ''' <summary>
+    ''' Clear the viewport and render the main menu with query tiles that route to 
+    ''' a grid or card view.
+    ''' </summary>
     Private Sub ShowHomeMenu()
         viewport.Controls.Clear()
 
@@ -58,7 +66,7 @@ Public Class SubaruPartsForm
                     "2. Parts by Category", 
                     "Category ID (0-11):", 
                     Function(q) PartQueryService.GetPartsByCategory(
-                        If(Integer.TryParse(q, Nothing), cInt(q), 0)
+                        If(Integer.TryParse(q, Nothing), CInt(q), 0)
                     )
                 )
             ),
@@ -115,6 +123,10 @@ Public Class SubaruPartsForm
         viewport.Controls.AddRange({grid, goldRule, header})
     End Sub
 
+    ''' <summary>
+    ''' Create a menu tile button with a gold hover that attaches the given 
+    ''' clicked query.
+    ''' </summary>
     Private Function Tile(
         title As String, bg As Color, fg As Color, onClick As Action
     ) As Button
@@ -124,9 +136,10 @@ Public Class SubaruPartsForm
             .BackColor = bg, 
             .ForeColor = fg, 
             .FlatStyle = FlatStyle.Flat,
-            .TextAlign = 
-                ContentAlignment.TopLeft, .Padding = New Padding(12, 12, 10, 10),
-            .Font = New Font("Segoe UI", 10, FontStyle.Bold), .Cursor = Cursors.Hand
+            .TextAlign = ContentAlignment.TopLeft, 
+            .Padding = New Padding(12, 12, 10, 10),
+            .Font = New Font("Segoe UI", 10, FontStyle.Bold), 
+            .Cursor = Cursors.Hand
         }
         btn.FlatAppearance.BorderSize = 2
         btn.FlatAppearance.BorderColor = bg
@@ -136,22 +149,43 @@ Public Class SubaruPartsForm
         Return btn
     End Function
 
+    ''' <summary>
+    ''' Initialize a read only data grid view and mount it inside the query screen.
+    ''' </summary>
     Private Sub OpenGridView(
-        title As String, prompt As String, queryFn As Func(Of String, Object)
+        title As String, prompt As String, queryFunc As Func(Of String, Object)
     )
         Dim dgv As New DataGridView With {
             .Dock = DockStyle.Fill, 
             .ReadOnly = True, 
             .BackgroundColor = ColorTranslator.FromHtml("#FFFFFF"),
             .AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-            .BorderStyle = BorderStyle.None
+            .BorderStyle = BorderStyle.None,
+            .ClipboardCopyMode = DataGridViewClipboardCopyMode.EnableWithoutHeaderText,
+            .SelectionMode = DataGridViewSelectionMode.CellSelect
         }
-        BuildQueryScreen(title, prompt, Sub(q) dgv.DataSource = queryFn(q), dgv)
+        Dim menu As New ContextMenuStrip()
+        menu.Items.Add("Copy", Nothing, Sub()
+            Dim content = dgv.GetClipboardContent()
+            If content IsNot Nothing Then Clipboard.SetDataObject(content)
+        End Sub)
+        dgv.ContextMenuStrip = menu
+        BuildQueryScreen(title, prompt, Sub(q) dgv.DataSource = queryFunc(q), dgv)
         If prompt Is Nothing Then
-            dgv.DataSource = queryFn("")
+            dgv.DataSource = queryFunc("")
         End If
+        AddHandler dgv.DataBindingComplete, Sub()
+            For Each colName In {"DealerCost", "MSRP", "ProjectedProfitMargin"}
+                If dgv.Columns.Contains(colName) Then 
+                    dgv.Columns(colName).DefaultCellStyle.Format = "C2"
+                End If
+            Next
+        End Sub
     End Sub
 
+    ''' <summary>
+    ''' Initialize a single result label inside the query screen.
+    ''' </summary>
     Private Sub OpenCardView(title As String)
         Dim lbl As New Label With {
             .Dock = DockStyle.Fill,
@@ -173,6 +207,9 @@ Public Class SubaruPartsForm
             )
     End Sub
 
+    ''' <summary>
+    ''' Redner the query screen layout.
+    ''' </summary>
     Private Sub BuildQueryScreen(
         title As String, prompt As String, onRun As Action(Of String), body As Control
     )

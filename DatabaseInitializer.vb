@@ -4,17 +4,24 @@ Imports System.IO
 Imports System.Collections.Generic
 
 Public Module DatabaseInitializer
+    Public Enum SeedTarget
+        Parts
+        DealerInventory
+    End Enum
+
     Public Const CONN_STR As String = 
         "Data Source=subaru_parts.db;Foreign Keys=True;"
 
     ''' <summary>
-    ''' Create the `Parts` and `Categories` database tables if the connection data
-    ''' source does not exist, overwriting if otherwise.
+    ''' Create the `Parts`,`Categories`, and `DealerInventory` database tables if the 
+    ''' connection data source does not exist, overwriting if otherwise.
     ''' 
     ''' Delegates the database seeding to helper functions.
     ''' </summary>
     Public Sub InitAndPopulateData(
-        fp As String, Optional forceRecreate As Boolean = False
+        fp As String, 
+        target As SeedTarget,
+        Optional forceRecreate As Boolean = False
     )
         If forceRecreate AndAlso File.Exists("subaru_parts.db") Then
             File.Delete("subaru_parts.db")
@@ -24,7 +31,7 @@ Public Module DatabaseInitializer
             conn.Open()
 
             Using cmd As New SqliteCommand(
-                SqlStatements.CreateCategoriesAndPartsTable, conn
+                SqlStatements.CreateAllTables, conn
             )
                 cmd.ExecuteNonQuery()
             End Using
@@ -32,7 +39,12 @@ Public Module DatabaseInitializer
             SeedCategories(conn)
 
             If File.Exists(fp) Then
-                SeedPartsFromCSV(conn, fp)
+                Select Case target
+                    Case SeedTarget.Parts
+                        SeedPartsFromCSV(conn, fp)
+                    Case SeedTarget.DealerInventory
+                        ' PlaceholderFunction()
+                End Select
             Else
                 Console.WriteLine($"ERROR: File '{fp}' not found for seeding.")
             End If
@@ -103,10 +115,10 @@ Public Module DatabaseInitializer
     '''
     ''' Fails gracefully if duplicate part numbers entries are discovered.
     ''' </summary>
-    Private Sub SeedPartsFromCSV(conn As SqliteConnection, csvFilePath As String)
+    Private Sub SeedPartsFromCSV(conn As SqliteConnection, fp As String)
         If HasData(SqlStatements.CheckPartsExist, conn) Then Return
 
-        Dim lines As String() = File.ReadAllLines(csvFilePath)
+        Dim lines As String() = File.ReadAllLines(fp)
         Dim insertedCount As Integer = 0
         Dim effDateStr As String = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
         
@@ -192,5 +204,41 @@ Public Module DatabaseInitializer
         Console.WriteLine(
             $"Successfully seeded {insertedCount} parts into SQLite database"
         )
+    End Sub
+
+    Public Sub SeedDealerInventoryFromCSV(conn As SqliteConnection, fp As String)
+        If HasData(SqlStatements.CheckInventoryExist, conn) Then Return
+
+        Dim lines As String() = File.ReadAllLines(fp)
+        Dim insertedCount As Integer = 0
+
+        Dim seenPartNums As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+        dim duplicatePartNums As New List(Of String)()
+
+        Using transaction = conn.BeginTransaction()
+            Using cmd As New SqliteCommand(
+                SqlStatements.InsertDealerInventory, conn, transaction
+            )
+                cmd.Parameters.Add("@mf", SqliteType.Text)
+                cmd.Parameters.Add("@partNum", SqliteType.Text)
+                cmd.Parameters.Add("@desc", SqliteType.Text)
+                cmd.Parameters.Add("@sgp", SqliteType.Text)
+                cmd.Parameters.Add("@bin", SqliteType.Text)
+                cmd.Parameters.Add("@oh", SqliteType.Integer)
+                cmd.Parameters.Add("@oo", SqliteType.Integer)
+                cmd.Parameters.Add("@bo", SqliteType.Integer)
+                cmd.Parameters.Add("@cost", SqliteType.Real)
+                cmd.Parameters.Add("@extCost", SqliteType.Real)
+                cmd.Parameters.Add("@ltd", SqliteType.Integer)
+                cmd.Parameters.Add("@lastSale", SqliteType.Text)
+
+                For i As Integer = 1 to lines.Length - 1
+                    Dim line As String = lines(i).Trim()
+                    If line.Length > 0 Then
+                        Dim cols As String() = line.Split(","c)
+                    End If
+                Next
+            End Using
+        End Using
     End Sub
 End Module

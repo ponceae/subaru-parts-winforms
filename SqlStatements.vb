@@ -3,7 +3,7 @@ Public Module SqlStatements
     ' +===================================================+
     '                   TABLE CREATION
     ' +===================================================+
-    Public Const CreateCategoriesAndPartsTable As String = "
+    Public Const CreateAllTables As String = "
         CREATE TABLE IF NOT EXISTS Categories (
             CategoryID INTEGER PRIMARY KEY,
             CategoryName TEXT NOT NULL
@@ -23,6 +23,22 @@ Public Module SqlStatements
             FOREIGN KEY (CategoryID) 
             REFERENCES Categories (CategoryID) 
             ON DELETE RESTRICT
+        );
+        
+        CREATE TABLE IF NOT EXISTS DealerInventory (
+            ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            Manufacturer TEXT NOT NULL,
+            PartNumber TEXT NOT NULL UNIQUE,
+            Description TEXT NOT NULL,
+            StockingGroup TEXT,
+            BinLocation TEXT,
+            OnHand INTEGER NOT NULL DEFAULT 0,
+            OnOrder INTEGER NOT NULL DEFAULT 0,
+            BackOrder INTEGER NOT NULL DEFAULT 0,
+            UnitCost REAL NOT NULL,
+            ExtendedCost REAL NOT NULL,
+            LtdSales INTEGER NOT NULL DEFAULT 0,
+            LastSaleDate TEXT
         );"
 
     ' +===================================================+
@@ -36,6 +52,10 @@ Public Module SqlStatements
     Public Const CheckPartsExist As String = "
         SELECT COUNT(*) 
         FROM Parts;"
+
+    Public Const CheckInventoryExist As String = "
+        SELECT COUNT(*)
+        FROM "
 
     ' +===================================================+
     '                   TABLE INSERTS
@@ -73,6 +93,36 @@ Public Module SqlStatements
             @rev, 
             @active, 
             @superBy
+        );"
+
+    Public Const InsertDealerInventory As String = "
+        INSERT INTO DealerInventory (
+            Manufacturer,
+            PartNumber,
+            Description,
+            StockingGroup,
+            BinLocation,
+            OnHand,
+            OnOrder,
+            BackOrder,
+            UnitCost,
+            ExtendedCost,
+            LtdSales,
+            LastSaleDate
+        )
+        VALUES (
+            @mf,
+            @partNum,
+            @desc
+            @sgp,
+            @bin,
+            @oh,
+            @oo,
+            @bo,
+            @cost,
+            @extCost,
+            @ltd,
+            @lastSale
         );"
 
     ' +===================================================+
